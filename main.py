@@ -24,17 +24,17 @@ class TextMinesweeper:
     
     def print_title(self):
         """Print game title."""
-        print("\n" + "="*70)
-        print("                    💣 MINESWEEPER 💣")
-        print("="*70)
+        print("\n" + "="*50)
+        print(" MINESWEEPER ")
+        print("="*50)
     
     def select_difficulty(self) -> dict:
         """Let player select difficulty."""
         print("\nSELECT DIFFICULTY:")
-        print("1. Beginner    (9x9,   10 mines) - Easy")
+        print("1. Beginner     (9x9,   10 mines) - Easy")
         print("2. Intermediate (16x16, 40 mines) - Medium")
         print("3. Advanced     (25x25, 99 mines) - Hard")
-        print("4. Custom      (Your own settings)")
+        print("4. Custom       (Your own settings)")
         
         while True:
             choice = input("\nEnter your choice (1-4): ").strip()
