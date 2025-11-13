@@ -288,7 +288,7 @@ class TextMinesweeper:
                 self.play_game()
                 break
             elif choice in ['n', 'no']:
-                print("\n👋 Thanks for playing! Goodbye!")
+                print("\nThanks for playing! Goodbye!")
                 self.running = False
                 break
             else:
@@ -306,7 +306,7 @@ def main():
         game = TextMinesweeper()
         game.run()
     except KeyboardInterrupt:
-        print("\n\n👋 Game interrupted! Goodbye!")
+        print("\n\nGame interrupted! Goodbye!")
     except Exception as e:
         print(f"\nFatal error: {e}")
         import traceback
