@@ -10,6 +10,15 @@ if project_root not in sys.path:
 from src.game.board import Difficulty
 from src.game.game_state import GameState, GameStatus
 
+# Colors
+BG_MAIN = "#1e1e1e"
+BG_PANEL = "#2b2b2b"
+FG_TEXT = "#f5f5f5"
+ACCENT = "#4caf50"
+BTN_BG = "#3a3a3a"
+BTN_BG_HOVER = "#4a4a4a"
+BTN_DANGER = "#c62828"
+
 
 class MinesweeperApp(tk.Tk):
     def __init__(self):
@@ -17,9 +26,20 @@ class MinesweeperApp(tk.Tk):
         self.title("Minesweeper")
         self.resizable(False, False)
 
+        #themeing
+        self.configure(bg=BG_MAIN)
+
+        self.option_add("*Font", "Helvetica 11")
+        self.option_add("*Label.foreground", FG_TEXT)
+        self.option_add("*Label.background", BG_MAIN)
+        self.option_add("*Button.background", BTN_BG)
+        self.option_add("*Button.foreground", FG_TEXT)
+        self.option_add("*Button.activeBackground", BTN_BG_HOVER)
+        self.option_add("*Button.activeForeground", FG_TEXT)
+
         #all frames will go here
-        container = tk.Frame(self)
-        container.pack(side="top", fill="both", expand=True)
+        container = tk.Frame(self, bg=BG_MAIN)
+        container.pack(side="top", fill="both", expand=True, padx=10, pady=10)
 
         self.container = container
         self.frames = {} #dictionary to store frames
@@ -133,13 +153,16 @@ class MinesweeperApp(tk.Tk):
         popup.transient(self)
         popup.grab_set()
         popup.resizable(False, False)
+        popup.configure(bg=BG_PANEL)
 
         tk.Label(
             popup,
             text=message,
             padx=20,
             pady=20,
-            justify="left"
+            justify="left",
+            bg=BG_PANEL,
+            fg=FG_TEXT,
         ).pack()
 
         btn_frame = tk.Frame(popup)
@@ -147,22 +170,33 @@ class MinesweeperApp(tk.Tk):
 
         #exit
         tk.Button(btn_frame, text="OK", width=12,
-                command=popup.destroy).pack(side="left", padx=8)
+                command=popup.destroy, fg="black").pack(side="left", padx=8)
 
         #view stats
         tk.Button(btn_frame, text="View Stats", width=12,
-                command=lambda: (popup.destroy(), self.show_stats())
+                command=lambda: (popup.destroy(), self.show_stats()),
+                fg="black"
         ).pack(side="left", padx=8)
 
 #=== MAIN MENU ===#
 class MainMenuFrame(tk.Frame):
     def __init__(self, parent, controller: MinesweeperApp):
-        super().__init__(parent)
+        super().__init__(parent, bg=BG_MAIN)
         self.controller = controller
 
-        tk.Label(self, text="Minesweeper", font=("Helvetica", 20, "bold")).pack(pady=20)
+        tk.Label(
+            self, 
+            text="Minesweeper", 
+            font=("Helvetica", 20, "bold"), 
+            bg=BG_MAIN,
+            fg=FG_TEXT).pack(pady=20)
 
-        tk.Label(self, text="Select difficulty", font=("Helvetica", 12)).pack(pady=(0, 5))
+        tk.Label(
+            self, 
+            text="Select difficulty", 
+            font=("Helvetica", 12),
+            bg=BG_MAIN,
+            fg="#cccccc").pack(pady=(0, 5))
 
         self.difficulty_var = tk.StringVar()
 
@@ -174,11 +208,16 @@ class MainMenuFrame(tk.Frame):
                 value=diff["name"],
                 anchor="w",
                 justify="left",
+                bg=BG_MAIN,
+                fg=FG_TEXT,
+                activebackground=BG_MAIN,
+                activeforeground=FG_TEXT,
+                selectcolor=BG_PANEL,
             ).pack(fill="x", padx=40, pady=2)
 
-        tk.Button(self, text="Start Game", width=18, command=self._on_start).pack(pady=15)
-        tk.Button(self, text="View Stats", width=18, command=controller.show_stats).pack(pady=5)
-        tk.Button(self, text="Quit", width=18, command=controller.destroy).pack(pady=5)
+        tk.Button(self, text="Start Game", width=18, command=self._on_start, fg="black", bg=BTN_BG).pack(pady=15)
+        tk.Button(self, text="View Stats", width=18, command=controller.show_stats, fg="black").pack(pady=5)
+        tk.Button(self, text="Quit", width=18, command=controller.destroy, fg="black").pack(pady=5)
 
     #starts the game with selected difficulty
     def _on_start(self):
@@ -197,7 +236,7 @@ class MainMenuFrame(tk.Frame):
 #=== GAME ===#
 class GameFrame(tk.Frame):
     def __init__(self, parent, controller: MinesweeperApp, game_state: GameState):
-        super().__init__(parent)
+        super().__init__(parent, bg=BG_MAIN)
         self.controller = controller
         self.game_state = game_state
 
@@ -215,31 +254,36 @@ class GameFrame(tk.Frame):
     #=== UI ===#
     def _build_ui(self):
         ## TOP BAR (Difficulty, Timer, Mines, Flags, Hints) ##
-        self.top_bar = tk.Frame(self)
+        self.top_bar = tk.Frame(self, bg=BG_PANEL)
         self.top_bar.pack(side="top", fill="x", pady=5)
 
         tk.Label(
             self.top_bar,
             text=f'Difficulty: {self.board.difficulty_name}',
             font=("Helvetica", 11, "bold"),
+            bg=BG_PANEL,
+            fg=FG_TEXT
         ).pack(side="left", padx=10)
 
-        self.top_bar.timer_label = tk.Label(self.top_bar, text="Time: 0.0 s")
+        self.top_bar.timer_label = tk.Label(self.top_bar, text="Time: 0.0 s", bg=BG_PANEL, fg=FG_TEXT)
         self.top_bar.timer_label.pack(side="left", padx=15)
 
         self.top_bar.mines_label = tk.Label(
             self.top_bar,
             text=f'Mines: {self.board.num_mines}   Flags: {self.board.flags_placed}',
+            bg=BG_PANEL,
+            fg=FG_TEXT
         )
         self.top_bar.mines_label.pack(side="left", padx=15)
 
         self.top_bar.hints_label = tk.Label(
             self.top_bar,
             text=f'Hints: {self.game_state.hints_used}/{self.game_state.max_hints}',
+            bg=BG_PANEL,
         )
         self.top_bar.hints_label.pack(side="left", padx=15)
 
-        tk.Button(self.top_bar, text="Hint", command=self._on_hint).pack(side="right", padx=10)
+        tk.Button(self.top_bar, text="Hint", command=self._on_hint, bg=ACCENT, fg='black').pack(side="right", padx=10)
 
         ## BUTTONS (MINE CELLS) ##
         self.board_frame = tk.Frame(self)
@@ -266,13 +310,15 @@ class GameFrame(tk.Frame):
                 self.buttons[(r, c)] = btn
 
         ## BOTTOM BAR (Main Menu/Restart) ##
-        self.bottom_bar = tk.Frame(self)
+        self.bottom_bar = tk.Frame(self, bg=BG_PANEL)
         self.bottom_bar.pack(side="bottom", fill="x", pady=5)
 
-        tk.Button(self.bottom_bar, text="Main Menu", command=self._on_main_menu).pack(
+        tk.Button(self.bottom_bar, text="Main Menu", command=self._on_main_menu,
+                  bg=BTN_BG, fg="black").pack(
             side="left", padx=10
         )
-        tk.Button(self.bottom_bar, text="Restart", command=self._on_restart).pack(
+        tk.Button(self.bottom_bar, text="Restart", command=self._on_restart,
+                  bg=BTN_BG, fg="black").pack(
             side="right", padx=10
         )
 
@@ -305,7 +351,7 @@ class GameFrame(tk.Frame):
             messagebox.showinfo("Hint", "No hints available.")
         self._refresh_board()
 
-        if self.game_state.status in (GameStatus.WON): #if you use a hint and it wins the game
+        if self.game_state.status is GameStatus.WON: #if you use a hint and it wins the game
             self._refresh_board()
             self.controller.on_game_finished()
 
@@ -338,7 +384,7 @@ class GameFrame(tk.Frame):
             cell = self.board.grid[r][c]
 
             if cell.is_flagged():
-                btn.config(text="F")
+                btn.config(text="F", fg="black")
             elif cell.is_revealed():
                 btn.config(relief="sunken", state="disabled")
                 if cell.is_mine:
@@ -349,7 +395,7 @@ class GameFrame(tk.Frame):
                     else:
                         btn.config(text="")
             else:
-                continue
+                btn.config(text="")
 
     def _update_timer(self):
         if self.top_bar.timer_label is not None:
@@ -361,7 +407,7 @@ class GameFrame(tk.Frame):
 #=== STATS ===#
 class StatsFrame(tk.Frame):
     def __init__(self, parent, controller: MinesweeperApp):
-        super().__init__(parent)
+        super().__init__(parent, bg=BG_MAIN)
         self.controller = controller
 
         tk.Label(self, text="Statistics", font=("Helvetica", 18, "bold")).pack(pady=15)
@@ -372,11 +418,11 @@ class StatsFrame(tk.Frame):
         button_bar = tk.Frame(self)
         button_bar.pack(pady=10)
 
-        tk.Button(button_bar, text="Back to Main Menu", command=self._back_to_menu).pack(
-            side="left", padx=10
+        tk.Button(button_bar, text="Back to Main Menu", command=self._back_to_menu, fg="black", bg=BTN_BG).pack(
+            side="left", padx=10,
         )
-        tk.Button(button_bar, text="Play Again", command=self._play_again).pack(
-            side="left", padx=10
+        tk.Button(button_bar, text="Play Again", command=self._play_again, fg="black", bg=BTN_BG).pack(
+            side="left", padx=10,
         )
 
     #populates the actual stats
