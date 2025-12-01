@@ -1,3 +1,4 @@
+import os
 import unittest
 from src.game.board import Board, Difficulty
 from src.game.cell import CellState
