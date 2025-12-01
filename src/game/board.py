@@ -7,10 +7,11 @@ class Difficulty:
     BEGINNER = {"rows": 9, "cols": 9, "mines": 10, "name": "Beginner"}
     INTERMEDIATE = {"rows": 16, "cols": 16, "mines": 40, "name": "Intermediate"}
     ADVANCED = {"rows": 25, "cols": 25, "mines": 99, "name": "Advanced"}
-    
+    CUSTOM = {"rows": 10, "cols": 10, "mines": 15, "name": "Custom"}  # Default custom settings
+
     @staticmethod
     def get_all():
-        return [Difficulty.BEGINNER, Difficulty.INTERMEDIATE, Difficulty.ADVANCED]
+        return [Difficulty.BEGINNER, Difficulty.INTERMEDIATE, Difficulty.ADVANCED, Difficulty.CUSTOM]
 
 class Board:
     """Manages the game board logic."""
