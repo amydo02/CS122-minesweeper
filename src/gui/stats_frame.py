@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.gui.styles import BG_MAIN
+from src.db import UserDifficultyStat
 
 class StatsFrame(tk.Frame):
     def __init__(self, parent, controller):
@@ -62,6 +63,30 @@ class StatsFrame(tk.Frame):
             lines.append(f"  Hints used : {last['hints_used']}")
         else:
             lines.append("No games played yet this session.")
+        
+        # --- Overall best (all sessions for this user) ---
+        user = self.controller.current_user
+        if user is not None:
+            # refresh relationship from DB in case it changed
+            self.controller.db.refresh(user)
+
+            # per difficulty and overall
+            lines.append("")
+            lines.append(f"Overall best times for '{user.name}' (all sessions):")
+            overall_best = None
+
+            for stat in user.stats:
+                if stat.best_time is not None:
+                    lines.append(
+                        f"  {stat.difficulty}: {stat.best_time:.1f} s (best score: {stat.best_score})"
+                    )
+                    if overall_best is None or stat.best_time < overall_best:
+                        overall_best = stat.best_time
+
+            if overall_best is not None:
+                lines.append(f"  Fastest time across all difficulties: {overall_best:.1f} s")
+            else:
+                lines.append("  No recorded wins yet for this user.")
 
         self.summary_label.config(text="\n".join(lines))
 
