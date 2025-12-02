@@ -1,7 +1,7 @@
 import os
 import sys
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 
 # Add project root to path
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -10,44 +10,28 @@ if project_root not in sys.path:
 
 from src.game.board import Difficulty
 from src.game.game_state import GameState, GameStatus
+from src.gui.styles import BG_MAIN, BG_PANEL, FG_TEXT, style
+from src.gui.menu_frame import MainMenuFrame
+from src.gui.game_frame import GameFrame
+from src.gui.stats_frame import StatsFrame
+from src.db import SessionLocal, init_db, User, UserDifficultyStat
+from src.gui.styles import BG_MAIN, BG_PANEL, FG_TEXT, style
 
-# Colors
-BG_MAIN = "#1e1e1e"
-BG_PANEL = "#2b2b2b"
-FG_TEXT = "#f5f5f5"
-ACCENT = "#4caf50"
-BTN_BG = "#3a3a3a"
-BTN_BG_HOVER = "#4a4a4a"
-BTN_DANGER = "#c62828"
-
-# Cell colors
-CELL_UNREVEALED = "#7b7b7b"
-CELL_REVEALED = "#c0c0c0"
-CELL_FLAG = "#ffa726"
-
-# Number colors (classic Minesweeper style)
-NUMBER_COLORS = {
-    1: "#0000ff",  # Blue
-    2: "#008000",  # Green
-    3: "#ff0000",  # Red
-    4: "#000080",  # Dark Blue
-    5: "#800000",  # Maroon
-    6: "#008080",  # Cyan
-    7: "#000000",  # Black
-    8: "#808080",  # Gray
-}
-
+#initialize db
+init_db()
 
 class MinesweeperApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Minesweeper")
         self.resizable(False, False)
+        self.styles = style(self)
 
-        #themeing
-        self.configure(bg=BG_MAIN)
+        #create the session, create current_user var
+        self.db = SessionLocal()
+        self.current_user: User | None = None
 
-        # Set window icon
+        # set window icon
         try:
             icon_path = os.path.join(project_root, "image", "icon.png")
             if os.path.exists(icon_path):
@@ -56,33 +40,24 @@ class MinesweeperApp(tk.Tk):
         except Exception as e:
             print(f"Could not load icon: {e}")
 
-        self.option_add("*Font", "Helvetica 11")
-        self.option_add("*Label.foreground", FG_TEXT)
-        self.option_add("*Label.background", BG_MAIN)
-        self.option_add("*Button.background", BTN_BG)
-        self.option_add("*Button.foreground", FG_TEXT)
-        self.option_add("*Button.activeBackground", BTN_BG_HOVER)
-        self.option_add("*Button.activeForeground", FG_TEXT)
+        #prompt user to log in
+        self._show_login_dialog()
 
-        #all frames will go here
         container = tk.Frame(self, bg=BG_MAIN)
         container.pack(side="top", fill="both", expand=True, padx=10, pady=10)
 
         self.container = container
-        self.frames = {} #dictionary to store frames
+        self.frames: dict[str, tk.Frame] = {}
 
-        #initialize gamestate var 
-        self.current_game: GameState = None
+        self.current_game: GameState | None = None
 
-        #store stats across session
         self.stats = {
             "games_played": 0,
             "games_won": 0,
             "per_difficulty": {},
             "last_game": None,
         }
-        
-        #initialize per-difficulty stat
+
         for diff in Difficulty.get_all():
             name = diff["name"]
             self.stats["per_difficulty"][name] = {
@@ -92,48 +67,70 @@ class MinesweeperApp(tk.Tk):
                 "best_score": None,
             }
 
-        #create fixed frames
+        # fixed frames
         self.frames["menu"] = MainMenuFrame(parent=container, controller=self)
         self.frames["menu"].grid(row=0, column=0, sticky="nsew")
 
         self.frames["stats"] = StatsFrame(parent=container, controller=self)
         self.frames["stats"].grid(row=0, column=0, sticky="nsew")
 
-        #create game frame
+        # dynamic game frame
         self.frames["game"] = None
 
-        #open with main menu
+        #open with menu frame
         self.show_frame("menu")
-
-
-
-    #helper function to raise specified frame to front
+    
+    # raises a frame to the top
     def show_frame(self, name: str):
-        frame = self.frames.get(name)
-        if frame is not None:
-            frame.tkraise()
+        target = self.frames.get(name)
+        if target is None:
+            return
 
-    #explicit function to show the stats frame
-    #since we need to refresh the stats specifically
+        # Hide non active frames so they don't affect resizing
+        for key, frame in self.frames.items():
+            if frame is None:
+                continue
+            if frame is target:
+                frame.grid()
+            else:
+                frame.grid_remove()
+
+        target.tkraise()
+        self._resize_to_fit()
+
+    # Resizes current raised frame to fit
+    # tkinter will automatically size up, but not down
+    # this func helps resize down
+    def _resize_to_fit(self):
+        self.update_idletasks()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        self.geometry(f"{w}x{h}")
+
+    # helper function to show stats frame
     def show_stats(self):
         stats_frame: StatsFrame = self.frames["stats"]
         stats_frame.refresh()
         self.show_frame("stats")
 
-
+    # start game
     def start_new_game(self, difficulty: dict):
+        from src.gui.game_frame import GameFrame 
+
+        #initialize gameboard with difficulty
         self.current_game = GameState(difficulty)
 
-        #destroy all previous games
+        #destroy all old game frames
         old = self.frames.get("game")
         if old is not None:
             old.destroy()
 
-        
+        #create game_frame, add to dict and grid
         game_frame = GameFrame(parent=self.container, controller=self, game_state=self.current_game)
         self.frames["game"] = game_frame
         game_frame.grid(row=0, column=0, sticky="nsew")
 
+        #display game frame
         self.show_frame("game")
 
     def on_game_finished(self):
@@ -144,14 +141,13 @@ class MinesweeperApp(tk.Tk):
         diff_name = gs.difficulty["name"]
         won = gs.status == GameStatus.WON
 
-        #update the total stats
+        # --- update in-memory session stats ---
         self.stats["games_played"] += 1
         self.stats["per_difficulty"][diff_name]["played"] += 1
         if won:
             self.stats["games_won"] += 1
             self.stats["per_difficulty"][diff_name]["won"] += 1
 
-            #update best time and best score
             best_time = self.stats["per_difficulty"][diff_name]["best_time"]
             if best_time is None or gs.elapsed_time < best_time:
                 self.stats["per_difficulty"][diff_name]["best_time"] = gs.elapsed_time
@@ -160,7 +156,6 @@ class MinesweeperApp(tk.Tk):
             if best_score is None or gs.score > best_score:
                 self.stats["per_difficulty"][diff_name]["best_score"] = gs.score
 
-        #store last game summary
         self.stats["last_game"] = {
             "difficulty": diff_name,
             "won": won,
@@ -169,14 +164,41 @@ class MinesweeperApp(tk.Tk):
             "hints_used": gs.hints_used,
         }
 
-        # show win/lose message
+        # --- update persistent "overall" stats in DB ---
+        if self.current_user is not None and won:
+            # find/create per-difficulty row
+            stat = (
+                self.db.query(UserDifficultyStat)
+                .filter_by(user_id=self.current_user.id, difficulty=diff_name)
+                .first()
+            )
+            if stat is None:
+                stat = UserDifficultyStat(
+                    user_id=self.current_user.id,
+                    difficulty=diff_name,
+                    best_time=gs.elapsed_time,
+                    best_score=gs.score,
+                )
+                self.db.add(stat)
+            else:
+                # update if this run is better
+                if stat.best_time is None or gs.elapsed_time < stat.best_time:
+                    stat.best_time = gs.elapsed_time
+                if stat.best_score is None or gs.score > stat.best_score:
+                    stat.best_score = gs.score
+
+            self.db.commit()
+
+        # win/lose message
         if won:
             message = f"You won!\n\nTime: {gs.elapsed_time:.1f} s\nScore: {gs.score}"
         else:
             message = "Boom! You hit a mine.\n\nBetter luck next time."
         self._show_game_over_message(message)
-    
-    def _show_game_over_message(self, message):
+
+
+    #Game over message
+    def _show_game_over_message(self, message: str):
         popup = tk.Toplevel(self)
         popup.title("Game Over")
         popup.transient(self)
@@ -194,502 +216,144 @@ class MinesweeperApp(tk.Tk):
             fg=FG_TEXT,
         ).pack()
 
-        btn_frame = tk.Frame(popup)
+        btn_frame = tk.Frame(popup, bg=BG_PANEL)
         btn_frame.pack(pady=10)
 
-        #exit
-        tk.Button(btn_frame, text="OK", width=12,
-                command=popup.destroy, fg="black").pack(side="left", padx=8)
-
-        #view stats
-        tk.Button(btn_frame, text="View Stats", width=12,
-                command=lambda: (popup.destroy(), self.show_stats()),
-                fg="black"
+        ttk.Button(
+            btn_frame,
+            text="OK",
+            width=12,
+            command=popup.destroy,
+            style="Menu.TButton",
         ).pack(side="left", padx=8)
 
-        # Center the popup on the main window
-        popup.update_idletasks()
+        ttk.Button(
+            btn_frame,
+            text="View Stats",
+            width=12,
+            command=lambda: (popup.destroy(), self.show_stats()),
+            style="Menu.TButton",
+        ).pack(side="left", padx=8)
 
-        # Get main window position and size
+        #Centers the message
+        popup.update_idletasks()
         main_x = self.winfo_x()
         main_y = self.winfo_y()
         main_width = self.winfo_width()
         main_height = self.winfo_height()
-
-        # Get popup size
         popup_width = popup.winfo_width()
         popup_height = popup.winfo_height()
-
-        # Calculate center position relative to main window
         x = main_x + (main_width - popup_width) // 2
         y = main_y + (main_height - popup_height) // 2
-
         popup.geometry(f"+{x}+{y}")
-
-#=== MAIN MENU ===#
-class MainMenuFrame(tk.Frame):
-    def __init__(self, parent, controller: MinesweeperApp):
-        super().__init__(parent, bg=BG_MAIN)
-        self.controller = controller
-
-        tk.Label(
-            self, 
-            text="Minesweeper", 
-            font=("Helvetica", 20, "bold"), 
-            bg=BG_MAIN,
-            fg=FG_TEXT).pack(pady=20)
-
-        tk.Label(
-            self, 
-            text="Select difficulty", 
-            font=("Helvetica", 12),
-            bg=BG_MAIN,
-            fg="#cccccc").pack(pady=(0, 5))
-
-        self.difficulty_var = tk.StringVar()
-
-        for diff in Difficulty.get_all():
-            tk.Radiobutton(
-                self,
-                text=f'{diff["name"]} ({diff["rows"]}x{diff["cols"]}, {diff["mines"]} mines)',
-                variable=self.difficulty_var,
-                value=diff["name"],
-                anchor="w",
-                justify="left",
-                bg=BG_MAIN,
-                fg=FG_TEXT,
-                activebackground=BG_MAIN,
-                activeforeground=FG_TEXT,
-                selectcolor=BG_PANEL,
-            ).pack(fill="x", padx=40, pady=2)
-
-        tk.Button(self, text="Start Game", width=18, command=self._on_start, fg="black", bg=BTN_BG).pack(pady=15)
-        tk.Button(self, text="View Stats", width=18, command=controller.show_stats, fg="black").pack(pady=5)
-        tk.Button(self, text="Quit", width=18, command=controller.destroy, fg="red").pack(pady=5)
-
-    #starts the game with selected difficulty
-    def _on_start(self):
-        selected_name = self.difficulty_var.get()
-        selected_diff = None
-        for diff in Difficulty.get_all():
-            if diff["name"] == selected_name:
-                selected_diff = diff
-                break
-        if selected_diff is None:
-            messagebox.showerror("Error", "Please select a difficulty.")
-            return
-
-        # If custom difficulty is selected, show custom dialog
-        if selected_name == "Custom":
-            custom_diff = self._show_custom_dialog()
-            if custom_diff is not None:
-                self.controller.start_new_game(custom_diff)
-        else:
-            self.controller.start_new_game(selected_diff)
-
-    def _show_custom_dialog(self):
-        """Show dialog to get custom difficulty settings."""
-        dialog = tk.Toplevel(self.controller)
-        dialog.title("Custom Difficulty")
-        dialog.transient(self.controller)
+    
+    #login dialog
+    #prompts user for a name/pin
+    def _show_login_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Select User")
+        dialog.transient(self)
         dialog.grab_set()
         dialog.resizable(False, False)
         dialog.configure(bg=BG_PANEL)
 
-        result = {"cancelled": True}
-
-        # Title
         tk.Label(
             dialog,
-            text="Custom Difficulty Settings",
+            text="Minesweeper Profile",
             font=("Helvetica", 14, "bold"),
             bg=BG_PANEL,
-            fg=FG_TEXT
+            fg=FG_TEXT,
         ).grid(row=0, column=0, columnspan=2, pady=(15, 10), padx=20)
 
-        # Rows input
-        tk.Label(dialog, text="Rows (5-30):", bg=BG_PANEL, fg=FG_TEXT).grid(
+        tk.Label(dialog, text="Name:", bg=BG_PANEL, fg=FG_TEXT).grid(
             row=1, column=0, sticky="e", padx=(20, 5), pady=5
         )
-        rows_entry = tk.Entry(dialog, width=10)
-        rows_entry.insert(0, "10")
-        rows_entry.grid(row=1, column=1, sticky="w", padx=(5, 20), pady=5)
+        #name_entry is username
+        name_entry = tk.Entry(dialog, width=20)
+        name_entry.grid(row=1, column=1, sticky="w", padx=(5, 20), pady=5)
 
-        # Columns input
-        tk.Label(dialog, text="Columns (5-30):", bg=BG_PANEL, fg=FG_TEXT).grid(
+        tk.Label(dialog, text="PIN (4 digits):", bg=BG_PANEL, fg=FG_TEXT).grid(
             row=2, column=0, sticky="e", padx=(20, 5), pady=5
         )
-        cols_entry = tk.Entry(dialog, width=10)
-        cols_entry.insert(0, "10")
-        cols_entry.grid(row=2, column=1, sticky="w", padx=(5, 20), pady=5)
+        #pin_entry pin
+        pin_entry = tk.Entry(dialog, width=20, show="•")
+        pin_entry.grid(row=2, column=1, sticky="w", padx=(5, 20), pady=5)
 
-        # Mines input
-        tk.Label(dialog, text="Mines:", bg=BG_PANEL, fg=FG_TEXT).grid(
-            row=3, column=0, sticky="e", padx=(20, 5), pady=5
+        error_label = tk.Label(
+            dialog, text="", fg="red", bg=BG_PANEL, font=("Helvetica", 9)
         )
-        mines_entry = tk.Entry(dialog, width=10)
-        mines_entry.insert(0, "15")
-        mines_entry.grid(row=3, column=1, sticky="w", padx=(5, 20), pady=5)
+        error_label.grid(row=3, column=0, columnspan=2, pady=(5, 0))
 
-        # Error label
-        error_label = tk.Label(dialog, text="", fg="red", bg=BG_PANEL, font=("Helvetica", 9))
-        error_label.grid(row=4, column=0, columnspan=2, pady=(5, 0))
+        def on_ok():
+            name = name_entry.get().strip()
+            normal = name.lower()
+            pin = pin_entry.get().strip()
 
-        def validate_and_start():
-            try:
-                rows = int(rows_entry.get())
-                cols = int(cols_entry.get())
-                mines = int(mines_entry.get())
+            #verify name and pin exists, then verify pin is at least 4 digit number
+            if not name or not pin:
+                error_label.config(text="Please enter both name and PIN.")
+                return
+            if not pin.isdigit() or len(pin) < 4:
+                error_label.config(text="PIN should be at least 4 digits.")
+                return
 
-                # Validation
-                if not (5 <= rows <= 30):
-                    error_label.config(text="Rows must be between 5 and 30")
+            # look up existing users
+            user = self.db.query(User).filter_by(normalized_name=normal).first()
+            #if this user exists
+            if user:
+                #if the pin is incorrect
+                if user.pin != pin:
+                    error_label.config(text="Incorrect PIN for this name.")
                     return
-                if not (5 <= cols <= 30):
-                    error_label.config(text="Columns must be between 5 and 30")
-                    return
-                if mines < 1:
-                    error_label.config(text="Must have at least 1 mine")
-                    return
-                if mines >= rows * cols:
-                    error_label.config(text="Too many mines! Must be less than total cells")
-                    return
+                # valid existing user
+                self.current_user = user
+            #if the user doesn't exist, create a new user, and continue as the new user
+            else:
+                user = User(name=name, normalized_name=normal, pin=pin)
+                self.db.add(user)
+                self.db.commit()
+                self.db.refresh(user)
+                self.current_user = user
 
-                # Valid settings
-                result["cancelled"] = False
-                result["difficulty"] = {
-                    "rows": rows,
-                    "cols": cols,
-                    "mines": mines,
-                    "name": "Custom"
-                }
-                dialog.destroy()
+            dialog.destroy()
 
-            except ValueError:
-                error_label.config(text="Please enter valid numbers")
+        #close app if user doesn't want to log in
+        def on_cancel():
+            self.destroy()
+        def on_close():
+            self.destroy() 
+        dialog.protocol("WM_DELETE_WINDOW", on_close)
 
-        # Buttons
         btn_frame = tk.Frame(dialog, bg=BG_PANEL)
-        btn_frame.grid(row=5, column=0, columnspan=2, pady=(10, 15))
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=(10, 15))
 
-        tk.Button(
-            btn_frame,
-            text="Cancel",
-            width=10,
-            command=dialog.destroy,
-            bg=BTN_BG,
-            fg="red"
+        ttk.Button(
+            btn_frame, text="Cancel", width=10, command=on_cancel, style="Menu.TButton"
         ).pack(side="left", padx=5)
 
-        tk.Button(
-            btn_frame,
-            text="Start",
-            width=10,
-            command=validate_and_start,
-            bg=ACCENT,
-            fg="black"
+        ttk.Button(
+            btn_frame, text="OK", width=10, command=on_ok, style="Accent.TButton"
         ).pack(side="left", padx=5)
 
-        # Center the dialog
+        # center the dialog
         dialog.update_idletasks()
-        main_x = self.controller.winfo_x()
-        main_y = self.controller.winfo_y()
-        main_width = self.controller.winfo_width()
-        main_height = self.controller.winfo_height()
-        dialog_width = dialog.winfo_width()
-        dialog_height = dialog.winfo_height()
-        x = main_x + (main_width - dialog_width) // 2
-        y = main_y + (main_height - dialog_height) // 2
+        main_x = self.winfo_x()
+        main_y = self.winfo_y()
+        main_width = self.winfo_width() or 400
+        main_height = self.winfo_height() or 300
+        dw = dialog.winfo_width()
+        dh = dialog.winfo_height()
+        x = main_x + (main_width - dw) // 2
+        y = main_y + (main_height - dh) // 2
         dialog.geometry(f"+{x}+{y}")
 
+        name_entry.focus_set()
         dialog.wait_window()
 
-        if result["cancelled"]:
-            return None
-        return result["difficulty"]
-
-
-#=== GAME ===#
-class GameFrame(tk.Frame):
-    def __init__(self, parent, controller: MinesweeperApp, game_state: GameState):
-        super().__init__(parent, bg=BG_MAIN)
-        self.controller = controller
-        self.game_state = game_state
-
-        self.board = game_state.board
-        self.buttons: dict[tuple[int, int], tk.Button] = {} #dictionary of each button (cell)
-        self.top_bar = None
-        self.bottom_bar = None
-        self.board_frame = None
-
-        self._build_ui()
-
-        #start timer
-        self.after(100, self._update_timer)
-
-    #=== UI ===#
-    def _build_ui(self):
-        ## TOP BAR (Difficulty, Timer, Mines, Flags, Hints) ##
-        self.top_bar = tk.Frame(self, bg=BG_PANEL)
-        self.top_bar.pack(side="top", fill="x", pady=5)
-
-        tk.Label(
-            self.top_bar,
-            text=f'Difficulty: {self.board.difficulty_name}',
-            font=("Helvetica", 11, "bold"),
-            bg=BG_PANEL,
-            fg=FG_TEXT
-        ).pack(side="left", padx=10)
-
-        self.top_bar.timer_label = tk.Label(self.top_bar, text="Time: 0.0 s", bg=BG_PANEL, fg=FG_TEXT)
-        self.top_bar.timer_label.pack(side="left", padx=15)
-
-        self.top_bar.mines_label = tk.Label(
-            self.top_bar,
-            text=f'Mines: {self.board.num_mines}   Flags: {self.board.flags_placed}',
-            bg=BG_PANEL,
-            fg=FG_TEXT
-        )
-        self.top_bar.mines_label.pack(side="left", padx=15)
-
-        self.top_bar.hints_label = tk.Label(
-            self.top_bar,
-            text=f'Hints: {self.game_state.hints_used}/{self.game_state.max_hints}',
-            bg=BG_PANEL,
-        )
-        self.top_bar.hints_label.pack(side="left", padx=15)
-
-        tk.Button(self.top_bar, text="Hint", command=self._on_hint, bg=ACCENT, fg='black').pack(side="right", padx=10)
-
-        ## BUTTONS (MINE CELLS) ##
-        self.board_frame = tk.Frame(self)
-        self.board_frame.pack(padx=10, pady=10)
-
-        for r in range(self.board.rows):
-            for c in range(self.board.cols):
-                btn = tk.Button(
-                    self.board_frame,
-                    width=2,
-                    height=1,
-                    relief="raised",
-                    text="",
-                    font=("Courier", 12, "bold"),
-                    bg=CELL_UNREVEALED,
-                    activebackground=BTN_BG_HOVER,
-                    borderwidth=2,
-                )
-                btn.grid(row=r, column=c, padx=0, pady=0)
-
-                #button bindings
-                btn.bind("<Button-1>", lambda e, row=r, col=c: self._on_left_click(row, col))
-                btn.bind("<Button-3>", lambda e, row=r, col=c: self._on_right_click(row, col))
-
-                ### I tested this on my mac and it wasnt working
-                ### Because on mac trackpad, right click is Button-2.
-                btn.bind("<Button-2>", lambda e, row=r, col=c: self._on_right_click(row, col))
-                self.buttons[(r, c)] = btn
-
-        ## BOTTOM BAR (Main Menu/Restart) ##
-        self.bottom_bar = tk.Frame(self, bg=BG_PANEL)
-        self.bottom_bar.pack(side="bottom", fill="x", pady=5)
-
-        tk.Button(self.bottom_bar, text="Main Menu", command=self._on_main_menu,
-                  bg=BTN_BG, fg="black").pack(
-            side="left", padx=10
-        )
-        tk.Button(self.bottom_bar, text="Restart", command=self._on_restart,
-                  bg=BTN_BG, fg="black").pack(
-            side="right", padx=10
-        )
-
-        #render the board
-        self._refresh_board()
-
-    #=== EVENT HANDLERS ===#
-    def _on_left_click(self, row: int, col: int):
-        if self.game_state.status not in (GameStatus.NOT_STARTED, GameStatus.PLAYING):
-            return
-
-        self.game_state.click_cell(row, col)
-        self._refresh_board()
-
-        if self.game_state.status in (GameStatus.WON, GameStatus.LOST):
-            self._refresh_board()
-            self.controller.on_game_finished()
-
-    def _on_right_click(self, row: int, col: int):
-        if self.game_state.status != GameStatus.PLAYING:
-            return
-        self.game_state.flag_cell(row, col)
-        self._refresh_board()
-
-    def _on_hint(self):
-        if self.game_state.status != GameStatus.PLAYING:
-            return
-        used = self.game_state.use_hint()
-        if not used:
-            messagebox.showinfo("Hint", "No hints available.")
-        self._refresh_board()
-
-        if self.game_state.status is GameStatus.WON: #if you use a hint and it wins the game
-            self._refresh_board()
-            self.controller.on_game_finished()
-
-    def _on_main_menu(self):
-        if self.game_state.status == GameStatus.PLAYING:
-            quit = messagebox.askyesno(
-                "Quit Game?",
-                "Game is still in progress. Are you sure you want to return to the main menu?",
-            )
-            if not quit:
-                return
-        self.controller.show_frame("menu")
-
-    def _on_restart(self):
-        self.controller.start_new_game(self.game_state.difficulty)
-
-    def _refresh_board(self):
-        #update topbar label
-        if self.top_bar.mines_label is not None:
-            self.top_bar.mines_label.config(
-                text=f"Mines: {self.board.num_mines}   Flags: {self.board.flags_placed}"
-            )
-        if self.top_bar.hints_label is not None:
-            self.top_bar.hints_label.config(
-                text=f"Hints: {self.game_state.hints_used}/{self.game_state.max_hints}"
-            )
-
-        #update each button
-        for (r, c), btn in self.buttons.items():
-            cell = self.board.grid[r][c]
-
-            if cell.is_flagged():
-                btn.config(
-                    text="🚩",
-                    fg="white",
-                    bg=CELL_FLAG,
-                    font=("Arial", 11),
-                    state="normal",
-                    relief="raised"
-                )
-            elif cell.is_revealed():
-                btn.config(relief="sunken", state="disabled", bg=CELL_REVEALED)
-                if cell.is_mine:
-                    btn.config(
-                        text="💣",
-                        font=("Arial", 11),
-                        disabledforeground="black",
-                        bg="#ff6b6b"
-                    )
-                else:
-                    if cell.adjacent_mines > 0:
-                        color = NUMBER_COLORS.get(cell.adjacent_mines, "black")
-                        btn.config(
-                            text=str(cell.adjacent_mines),
-                            font=("Arial", 11, "bold"),
-                            disabledforeground=color
-                        )
-                    else:
-                        btn.config(text="", font=("Arial", 11))
-            else:
-                btn.config(
-                    text="",
-                    bg=CELL_UNREVEALED,
-                    state="normal",
-                    relief="raised"
-                )
-
-    def _update_timer(self):
-        if self.top_bar.timer_label is not None:
-            elapsed = self.game_state.get_elapsed_time()
-            self.top_bar.timer_label.config(text=f"Time: {elapsed:.1f} s")
-        # Keep updating while the app is alive; GameState will freeze time after end
-        self.after(200, self._update_timer)
-
-#=== STATS ===#
-class StatsFrame(tk.Frame):
-    def __init__(self, parent, controller: MinesweeperApp):
-        super().__init__(parent, bg=BG_MAIN)
-        self.controller = controller
-
-        tk.Label(self, text="Statistics", font=("Helvetica", 18, "bold")).pack(pady=15)
-
-        self.summary_label = tk.Label(self, text="", justify="left", font=("Courier", 10))
-        self.summary_label.pack(padx=20, pady=10)
-
-        button_bar = tk.Frame(self)
-        button_bar.pack(pady=10)
-
-        tk.Button(button_bar, text="Back to Main Menu", command=self._back_to_menu, fg="black", bg=BTN_BG).pack(
-            side="left", padx=10,
-        )
-        tk.Button(button_bar, text="Play Again", command=self._play_again, fg="black", bg=BTN_BG).pack(
-            side="left", padx=10,
-        )
-
-    #populates the actual stats
-    def refresh(self):
-        s = self.controller.stats
-        lines = []
-
-        lines.append(f"Total games played: {s['games_played']}")
-        lines.append(f"Total games won   : {s['games_won']}")
-        if s["games_played"] > 0:
-            win_rate = 100.0 * s["games_won"] / s["games_played"]
-            lines.append(f"Overall win rate  : {win_rate:.1f}%")
-        lines.append("")
-
-        lines.append("Per-difficulty stats:")
-        for diff_name, d in s["per_difficulty"].items():
-            lines.append(f"  {diff_name}:")
-            lines.append(f"    Played: {d['played']}, Won: {d['won']}")
-            if d["best_time"] is not None:
-                lines.append(f"    Best time : {d['best_time']:.1f} s")
-            if d["best_score"] is not None:
-                lines.append(f"    Best score: {d['best_score']}")
-            lines.append("")
-
-        last = s["last_game"]
-        if last is not None:
-            lines.append("Last game:")
-            lines.append(f"  Difficulty : {last['difficulty']}")
-            lines.append(f"  Result     : {'WON' if last['won'] else 'LOST'}")
-            lines.append(f"  Time       : {last['time']:.1f} s")
-            lines.append(f"  Score      : {last['score']}")
-            lines.append(f"  Hints used : {last['hints_used']}")
-        else:
-            lines.append("No games played yet this session.")
-
-        self.summary_label.config(text="\n".join(lines))
-
-    def _back_to_menu(self):
-        self.controller.show_frame("menu")
-
-    def _play_again(self):
-        last = self.controller.stats.get("last_game")
-        if not last:
-            #edge case
-            self.controller.show_frame("menu")
-            return
-
-        #replay previous difficulty
-        diff_name = last["difficulty"]
-        chosen = None
-        for diff in Difficulty.get_all():
-            if diff["name"] == diff_name:
-                chosen = diff
-                break
-        if chosen is None:
-            self.controller.show_frame("menu")
-            return
-
-        self.controller.start_new_game(chosen)
-
-
-def main():
-    app = MinesweeperApp()
-    app.mainloop()
-
+        # in case somehow no user is logged in after waiting for dialog to destroy
+        if self.current_user is None and not dialog:
+            self.destroy()
 
 if __name__ == "__main__":
-    main()
+    app = MinesweeperApp()
+    app.mainloop()
