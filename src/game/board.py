@@ -126,14 +126,34 @@ class Board:
         return safe_cells
     
     def check_win(self) -> bool:
-        """Checks if the player has won."""
+        """
+        Checks if the player has won.
+        Win conditions:
+        1. All non-mine cells are revealed, OR
+        2. All mines are correctly flagged and no safe cells are incorrectly flagged
+        """
+        all_safe_revealed = True
+        all_mines_flagged = True
+        no_incorrect_flags = True
+
         for row in range(self.rows):
             for col in range(self.cols):
                 cell = self.grid[row][col]
-                # Win condition: all non-mine cells are revealed
+
+                # Check if all non-mine cells are revealed
                 if not cell.is_mine and not cell.is_revealed():
-                    return False
-        return True
+                    all_safe_revealed = False
+
+                # Check if all mines are flagged
+                if cell.is_mine and not cell.is_flagged():
+                    all_mines_flagged = False
+
+                # Check for incorrect flags (flagged but not a mine)
+                if cell.is_flagged() and not cell.is_mine:
+                    no_incorrect_flags = False
+
+        # Win if either: all safe cells revealed, OR all mines correctly flagged
+        return all_safe_revealed or (all_mines_flagged and no_incorrect_flags)
     
     def reveal_all_mines(self):
         """Reveals all mines (for game over)."""
